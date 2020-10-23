@@ -1,0 +1,9 @@
+        EXTERN      ErrorHandler
+
+        EXTERN      errorBCD0
+
+;
+INVALID_STATE_ERR   EQU 1
+SENSOR_COMM_ERR     EQU 2
+CONVERSION_ERR      EQU 3
+SAMPLE_AVG_ERR      EQU 4
