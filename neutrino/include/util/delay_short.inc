@@ -1,0 +1,17 @@
+
+        ; Global Functions
+        EXTERN      DelayShort
+
+        ; Definitions
+DELAY_896us     EQU (0x100-0x0E)
+DELAY_960us     EQU (0x100-0x0F)
+DELAY_1024us    EQU (0x100-0x10)
+DELAY_1088us    EQU (0x100-0x11)
+DELAY_2048us    EQU (0x100-0x20)
+DELAY_3072us    EQU (0x100-0x30)
+DELAY_4096us    EQU (0x100-0x40)
+DELAY_5120us    EQU (0x100-0x50)
+DELAY_6144us    EQU (0x100-0x60)
+DELAY_7168us    EQU (0x100-0x70)
+DELAY_8192us    EQU (0x100-0x80)
+DELAY_10240us   EQU (0x100-0xA0)
