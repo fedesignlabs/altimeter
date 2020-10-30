@@ -1,6 +1,6 @@
 ;************************************************************************
 ;                                                                       *
-;   Filename:       battery.asm                                         *
+;   Filename:       altimeter.asm                                         *
 ;   Date:           July 16 2010                                        *
 ;   File Version:   1                                                   *
 ;       1   initial code                                Jul 16, 2010    *
@@ -16,7 +16,7 @@
 ;                                                                       *
 ;************************************************************************
 ;                                                                       *
-;   Description:    battery monitor                                     *
+;   Description:    Altitude related functions                          *
 ;                                                                       *
 ;                                                                       *
 ;************************************************************************

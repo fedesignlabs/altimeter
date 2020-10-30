@@ -7,7 +7,6 @@
 ;       2   I2C sensor, 23K20                           Sep 13, 2010    *
 ;    Project: Flight Computer 10X                                       *
 ;    Author:  Peter Farkas                                              *
-;    Company: Farkas Engineering                                        *
 ;                                                                       *
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
 ;                                                                       *
@@ -31,9 +30,7 @@
 
         ; fsm
         ;  functions
-        EXTERN      StateMachine
-        EXTERN      InitFsm
-        EXTERN      StateUnitSelect
+        EXTERN      InitFsm ; TODO: remove from here
 
         ; altimeter
         ;  functions
@@ -257,8 +254,7 @@ MainSetup:
         bcf     OSCCON, IDLEN                   ; IDLE mode on sleep, disabled
         bcf     INTCON, RBIE                    ; Disable port b interrupt-on-change flag
 
-        goto    StateUnitSelect
-        goto    StateMachine                    ; Jumps to main program
+        return
 
 ;******************************************************************************
 ;End of setup

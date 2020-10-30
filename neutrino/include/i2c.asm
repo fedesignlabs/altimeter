@@ -7,7 +7,6 @@
 ;       2   datai is now an internal variable           Aug 18, 2010    *
 ;       3   cleanup                                     Nov 06, 2010    *
 ;    Author:        Peter Farkas                                        *
-;    Company:       Farkas Engineering                                  *
 ;                                                                       *
 ;************************************************************************
 ;                                                                       *

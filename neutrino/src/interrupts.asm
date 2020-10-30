@@ -6,7 +6,6 @@
 ;       1   Initial Code                                Aug 17, 2010    *
 ;    Project: Flight Computer 10X                                       *
 ;    Author:  Peter Farkas                                              *
-;    Company: Farkas Engineering                                        *
 ;                                                                       *
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
 ;                                                                       *

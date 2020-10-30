@@ -45,7 +45,7 @@ eeAddrH         res 1                       ; MS Address Byte
     endif
 eeAddr          res 1                       ; LS Address Byte
 
-                access_ovr
+;                access_ovr
 eeData          res 1                       ; Data byte for read or write           * CONFIRMED
 
 ;************************************************************************

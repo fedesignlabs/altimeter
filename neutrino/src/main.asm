@@ -7,7 +7,6 @@
 ;       2   post fc101 drop off                         Aug 16, 2010    *
 ;    Project: neutrino                                                  *
 ;    Author:  Peter Farkas                                              *
-;    Company: Farkas Engineering                                        *
 ;                                                                       *
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
 ;                                                                       *
@@ -38,8 +37,10 @@
 
         ; External
         ; setup
-        ;  labels
         EXTERN      MainSetup
+
+        ; controller
+        EXTERN      InitController
 
 ;******************************************************************************
 ;EEPROM data
@@ -62,7 +63,11 @@ EE_INIT ORG     0xf00000
 RSTCODE ORG     0x0000                          ; Re-map Reset vector
 
         movlb   0x01                            ; set it for all non access ram variables 0x100 -> 0x1FF (BANKED variables)
-        goto    MainSetup                       ; go to start of main code
+        goto    boot
 
+BOOTCODE    CODE
+boot:
+        call    MainSetup                       ; call setup
+		goto    InitController                  ; jumps to main program
 
         END
