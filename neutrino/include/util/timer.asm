@@ -5,7 +5,6 @@
 ;   File Version:   1                                                   *
 ;       1   initial code                                Sep 12, 2010    *
 ;   Author:         Peter A Farkas                                      *
-;   Company:        Farkas Engineering                                  *
 ;                                                                       *
 ;************************************************************************
 ;                                                                       *

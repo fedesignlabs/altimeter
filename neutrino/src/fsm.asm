@@ -23,7 +23,6 @@
 
         #include    "include\processor.inc"
         #include    "settings.inc"
-        #include    "options.inc"
         #include    "include\util\timer.inc"
         #include    "include\util\delay_time.inc"
         #include    "include\util\delay_short.inc"
@@ -33,15 +32,14 @@
         #include    "include\sensor\mpl115a2.inc"
         #include    "include\dataProcessing.inc"
         #include    "include\typedef.inc"
+        #include    "fsm.inc"
 
         ; Global
         ; functions
         GLOBAL      StateMachine
         GLOBAL      InitFsm
-        GLOBAL      StateUnitSelect
 
         ; variables
-        GLOBAL      state
         GLOBAL      tempMinPressureH
         GLOBAL      tempMinPressureL
         GLOBAL      launchPressureH
@@ -49,11 +47,11 @@
         GLOBAL      maxAltitudeH
         GLOBAL      maxAltitudeL
 
-        ; External
-        ; options
-        ;  variables
-        EXTERN      options
+        ; TODO: remove this once moved
+        GLOBAL      ButtonPressed
+        GLOBAL      TransToIdle
 
+        ; External
         ; math
         ;  functions
         EXTERN      CompareU16
@@ -79,29 +77,9 @@
         EXTERN      SaveAltitudeToEEPROM
         EXTERN      CalculateAltitudeReached
 
-
-        ; eeprom
-        EXTERN      EepromWrite
-
                 ; DBG: hack
                 GLOBAL  WaitButtonRelease
                 EXTERN  StateTest
-
-;******************************************************************************
-;Bit Definitions for state flag
-;TODO: this needs to be fixed, only fsm.inc should contain these defines
-
-STATE_IDLE          EQU     .0
-STATE_LAUNCH        EQU     .1
-STATE_FLIGHT        EQU     .2
-
-STATE_GROUNDED      EQU     .5
-STATE_BEACON        EQU     .6
-STATE_SLEEP         EQU     .7
-
-STATE_UNIT_SELECT   EQU     .8
-
-STATE_TEST          EQU     .9
 
 ;******************************************************************************
 ;Bit Definitions for flightStatus flag
@@ -113,13 +91,12 @@ ALTITUDE_SAVED      EQU     .1                  ; indicates that an altitude has
 ;************************************************************************
 FSMVAR              udata_acs
     ; common
-state               res 1                       ; uint8; keeps track of the next state in the FSM
+nextState           res 1                       ; uint8; keeps track of the next state in the FSM
 
     ; ButtonPressed
 tempTime            res 1
-selections          res 1                       ; uint8; number of selections available
+selections          res 1   ; limited scope                    ; uint8; number of selections available
 option              res 1                       ; uint8; selection chosen
-limitedSelections   res 1                       ; bool; signal an end of options if true TODO: could put this into an FSM flags
 
     ; ?
 counterH            res 1                       ; uint16 (B1); flight counter
@@ -142,7 +119,7 @@ launchTimeoutL      res 1
 stateTimeoutH       res 1                       ; s2, s5, s9, t2ff; used in free flight and grounded
 stateTimeoutL       res 1
 
-;FSMOVR             access_ovr
+FSMOVR             access_ovr
 tempAltitudeH       res 1                       ; s0, shadow registers.  Used in mode3, for checking the
 tempAltitudeL       res 1                       ;  altitude without modifying the max altitude value
 
@@ -151,10 +128,6 @@ tempIndex           res 1                       ; temporary index variable
 FSMOVR              access_ovr
 tempPressureH       res 1                       ; s1, s2
 tempPressureL       res 1
-
-FSMOVR              access_ovr
-oldOptions          res 1
-
 
 ;************************************************************************
 FSMCODE         CODE
@@ -175,10 +148,7 @@ FSMCODE         CODE
 ;************************************************************************
 InitFsm:
         movlw   STATE_IDLE
-        movwf   state
-
-        ; do not limit length of long button press
-        clrf    limitedSelections
+        movwf   nextState
 
         ; set time out registers
         movlw   LAUNCH_TIMEOUT_H                        ; TODO: later get a value from eeprom, can be modified from settings mode
@@ -205,52 +175,39 @@ InitFsm:
 ;   This function is never called, it is jumped to.
 ;************************************************************************
 StateMachine:
-
         ; sleep until an event occurs
         bsf     INTCON, RBIE                        ; Enable port b interrupt-on-change flag
         sleep
         bcf     INTCON, RBIE                        ; Disable port b interrupt-on-change flag
 
         ; jump to the next state
-        movlw   STATE_IDLE
-        cpfsgt  state
-        bra     StateIdle
+        movf    nextState, W
+        call    StateLut
+        movwf   nextState
 
-        movlw   STATE_LAUNCH
-        cpfsgt  state
-        bra     StateLaunch
+        ; Sanity check
+        andlw   0b00000011                          ; make sure it is a multiple of 4
+        bnz     error_state  
+        movlw   STATE_MAX
+        cpfsgt  nextState
+        bra     StateMachine
 
-        movlw   STATE_FLIGHT
-        cpfsgt  state
-        bra     StateFlight
-
-        movlw   STATE_GROUNDED
-        cpfsgt  state
-        bra     StateGrounded
-
-        movlw   STATE_BEACON
-        cpfsgt  state
-        bra     StateBeacon
-
-        movlw   STATE_SLEEP
-        cpfsgt  state
-        bra     StateSleep
-
-        movlw   STATE_UNIT_SELECT
-        cpfsgt  state
-        bra     StateUnitSelect
-
-        movlw   STATE_TEST
-        cpfsgt  state
-        goto    StateTest
-
-
-        ; Unknown State - fatal error
+error_state:
         movlw   INVALID_STATE_ERR
         movwf   errorBCD0, BANKED                   ; error code
         movlw   .1                                  ; number of digits
         goto    ErrorHandler
+        
 
+;ORG nn00h
+StateLut:
+        addwf   PCL                                 ; increment program counter by offset (multiple of 4)
+        goto    StateIdle
+        goto    StateLaunch
+        goto    StateFlight
+        goto    StateGrounded
+        goto    StateBeacon
+        goto    StateTest
 
 ;************************************************************************
 ;   static StateIdle - State0: Idle
@@ -271,7 +228,6 @@ StateMachine:
 ;   conserve power.
 ;************************************************************************
 StateIdle:
-
         ; reset timer and enable idle mode to keep timer running.
         call    ResetTimer
         bsf     OSCCON, IDLEN                       ; IDLE mode on sleep, to keep timer running
@@ -335,10 +291,6 @@ s0_check_button:
         movlw   0x05
         cpfsgt  option
         bra     s0_option_5
-
-        movlw   0x06
-        cpfsgt  option
-        bra     s0_option_6
 
         bra     s0_button_done                      ; invalid option, ignore button press
 
@@ -448,41 +400,13 @@ s0_option_5:
         lfsr    FSR2, pressureH
         call    InitWindow
 
-        movlw   STATE_TEST
-        movwf   state
-
-        bra     StateMachine
-
-        ; long x6 duration press
-s0_option_6:
-        ; change altitude output units
-        ; beep out the current selection: - meter, --- feet
-
-        ; delay so that the beeps are not too close together
-        movlw   DELAY_500ms
-        call    Delay
-
-        ; toggle the selection
-        btg     options, OP_METRIC
-
-        ; output the current selection
-        btfss   options, OP_METRIC
-        bra     s0_op6_feet
-
-        call    ShortBeep               ; indicate that it is meters
-
-        bra     s0_button_done
-
-s0_op6_feet:
-        call    LongBeep                ; indicate that it is feet
-
-        bra     s0_button_done
+        retlw   STATE_TEST
 
 s0_button_done:
 
         bcf     OSCCON, IDLEN                       ; SLEEP mode on sleep, to reduce power
 
-        bra     StateMachine
+        retlw   STATE_IDLE
 
 
 ;************************************************************************
@@ -496,8 +420,7 @@ s0_button_done:
 ;
 ;   Postcondition: None.
 ;
-;   Starts by checking to see if the battery is low, in which case it
-;   will exit to the idle state.  It then checks to see if the button is
+;   Starts by checking to see if the button is
 ;   pressed, if so it either exits to idle state, or reenters launch
 ;   state.  It will then sample the pressure sensor and add the sample to
 ;   the sliding window.  It then checks for a launch, if found it will
@@ -507,23 +430,6 @@ s0_button_done:
 ;   every 2.56 seconds to indicate that it is in launch mode.
 ;************************************************************************
 StateLaunch:
-
-s1_check_battery:
-        call    CheckBattery
-        btfss   WREG, 0
-        bra     s1_check_button
-
-s1_battery_low:
-        ; since battery is too low to turn on the sensor, exit to idle mode.
-        call    DeactivateBuzzer                    ; no longer in rocket flight mode
-
-        call    LongBeep
-        call    ShortBeep
-        call    LongBeep
-
-        bra     TransToIdle
-
-s1_check_button:
         ; Check button press
         call    CheckButton
         btfss   WREG, 0
@@ -547,7 +453,7 @@ s1_short_press:
         call    ShortBeep
         call    LongBeep
 
-        bra     TransToIdle
+        goto    TransToIdle
 
 s1_long_press:
         ; if long duration press
@@ -606,11 +512,7 @@ s1_launch_detected:
         ; initialize counter
         clrf    counter
 
-        movlw   STATE_FLIGHT
-        movwf   state
-
-        bra     StateMachine
-
+        retlw   STATE_FLIGHT
         ; end if
 
 s1_launch_not_detected:
@@ -639,7 +541,7 @@ s1_timeout_check:
         call    ShortBeep
         call    LongBeep
 
-        bra     TransToIdle                         ; Return to idle
+        goto    TransToIdle                         ; Return to idle
 
 s1_timeout_done:
 
@@ -672,7 +574,7 @@ s1_buzzer_off:
 
 s1_buzzer_done:
 
-        bra     StateMachine
+        retlw   STATE_LAUNCH
 
 
 ;************************************************************************
@@ -686,8 +588,7 @@ s1_buzzer_done:
 ;
 ;   Postcondition: None.
 ;
-;   It does not check the battery voltage here, since a flight shouldn't
-;   last too long.  It starts by checking to see if the button is
+;   It starts by checking to see if the button is
 ;   pressed, which can only occur if the rocket was recovered before the
 ;   state could switch to grounded, or if there was a false launch
 ;   detection.  Either way it will treat it like a complete flight, save
@@ -695,7 +596,7 @@ s1_buzzer_done:
 ;   the pressure sensor and add the sample to the sliding window.  It
 ;   updates the minimum pressure variable if necessary.  It will save the
 ;   new minimum pressure if no new minimum pressure is found within 2.56
-;   seconds.  It will look for changes in pressure inorder to detect a
+;   seconds.  It will look for changes in pressure in order to detect a
 ;   landing.  Once a landing has been detected the pressure sensor will
 ;   be turned off, and the grounded state will be setup.
 ;************************************************************************
@@ -730,7 +631,7 @@ s2_button_pressed:
         ; beep out maximum altitude
         call    BeepOutAltitude                     ; beep out max altitude reached
 
-        bra     TransToIdle
+        goto    TransToIdle
 
 s2_button_done:
 
@@ -905,16 +806,13 @@ s2_pressure_change_else:
         ; Update the max altitude bcd values
         call    ConvertAltitudeToBCD
 
-        movlw   STATE_GROUNDED
-        movwf   state
-
-        bra     StateMachine
+        retlw   STATE_GROUNDED
         ;   end if
         ; end if
 
 s2_pressure_change_endif:
 
-        bra     StateMachine
+        retlw   STATE_FLIGHT
 
 
 ;************************************************************************
@@ -936,12 +834,11 @@ s2_pressure_change_endif:
 ;   the state to switch to beacon.
 ;************************************************************************
 StateGrounded:
-
         ; Check button press
 s5_check_button:
         call    CheckButton
         btfss   WREG, 0
-        bra     s5_button_done
+        bra     s5_timeout_check
 
         ; button has been pressed
 s5_button_pressed:
@@ -951,9 +848,7 @@ s5_button_pressed:
         ; beep out maximum altitude
         call    BeepOutAltitude
 
-        bra     TransToIdle
-
-s5_button_done:
+        goto    TransToIdle
 
 s5_timeout_check:
         ; if (timeElapsed >= W min) then
@@ -968,18 +863,8 @@ s5_timeout_check:
         ; compare, unsigned compare may cause an issue if timeout overflows, can only use equal
         call    CompareU16                          ; return 0 = equal, 1 = a < b, -1 = a > b
         tstfsz  WREG                                ; skip if time == timeout
-        bra     s5_timeout_done
-
-        movlw   STATE_BEACON
-        movwf   state
-
-        bra     StateMachine
-        ; end if
-
-s5_timeout_done:
-
-        bra     StateMachine
-
+        retlw   STATE_GROUNDED                      ; timeout not met
+        retlw   STATE_BEACON                        ; timeout met
 
 ;************************************************************************
 ;   static StateBeacon - State6: Beacon
@@ -1013,7 +898,7 @@ s6_battery_low:
         call    ShortBeep
         call    LongBeep
 
-        bra     TransToIdle
+        goto    TransToIdle
 
         ; check button press
 s6_check_button:
@@ -1031,7 +916,7 @@ s6_button_pressed:
         ; beep out maximum altitude
         call    BeepOutAltitude
 
-        bra     TransToIdle
+        goto    TransToIdle
 
 s6_button_done:
 
@@ -1063,131 +948,8 @@ s6_buzzer_off
 
 s6_buzzer_done:
 
-        bra     StateMachine
+        retlw   STATE_BEACON
 
-
-;*******************************************************************
-;   State7: Sleep
-;
-;   Description:
-;
-;*******************************************************************
-StateSleep:
-
-        call    ShutdownMpl115a2                    ; turn off pressure sensor
-
-        bcf     OSCCON, IDLEN                       ; IDLE mode on sleep, disabled
-
-        bcf     INTCON, GIE                         ; Disable interrupts
-
-        ; wait for input to change state
-        sleep
-        bra     $ - 2
-
-
-;************************************************************************
-;   static StateUnitSelect - State8: UnitSelection
-;
-;   Input: None.
-;
-;   Output: None.
-;
-;   Precondition: None.
-;
-;   Postcondition: None.
-;
-;   ?
-;************************************************************************
-StateUnitSelect:
-        ; enable idle mode to keep timer running.
-        call    ResetTimer
-        bsf     OSCCON, IDLEN                       ; IDLE mode on sleep, to keep timer running
-
-        movff   options, oldOptions
-
-s8_check_button:
-        ; check if button is pressed
-        call    CheckButton
-        btfss   WREG, 0
-
-        ; button was not pressed
-        bra     s8_done
-
-        movlw   DELAY_2000ms
-        call    Delay
-
-        ; button is pressed, get a selection from the user
-        movlw   .3
-        rcall   ButtonPressed
-
-        movlw   DELAY_500ms
-        call    Delay
-
-        ; jump to selection handler
-        movlw   0x00                                ; no change
-        cpfsgt  option
-        bra     s8_option_0
-
-        movlw   0x01                                ; feet
-        cpfsgt  option
-        bra     s8_option_1
-
-        movlw   0x02                                ; meters
-        cpfsgt  option
-        bra     s8_option_2
-
-s8_option_0:
-        ; didn't hold down long enough to make a selection
-        bra     s8_done
-
-s8_option_1:
-        ; set units to feet
-        bcf     options, OP_METRIC
-
-        ; redo conversion to make sure right output is used
-        call    ConvertAltitudeToBCD
-
-        ; beep to notify setup complete
-        call    ShortBeep
-        call    ShortBeep
-        call    ShortBeep
-
-        bra     s8_update_nvm
-
-s8_option_2:
-        ; set units to meters
-        bsf     options, OP_METRIC
-
-        ; redo conversion to make sure right output is used
-        call    ConvertAltitudeToBCD
-
-        ; beep to notify setup complete
-        call    LongBeep
-        call    LongBeep
-        call    LongBeep
-
-        bra     s8_update_nvm
-
-s8_update_nvm:
-        ; TODO, only write if options has changed.
-
-        movf    options, W
-        cpfseq  oldOptions
-        bra     s8_nvm
-        bra     s8_done
-
-s8_nvm:
-        clrf    EEADR                       ; set address to 0x00
-        movff   options, EEDATA             ; set data to write
-
-        movlw   b'00000100'                 ; Point to DATA memory, Access EEPROM, Enable writes
-        movwf   EECON1
-
-        call    EepromWrite
-
-s8_done:
-
-        bra     TransToIdle
 
 ;** State Transitions ***************************************************
 
@@ -1213,10 +975,7 @@ TransToIdle:
         bcf     OSCCON, IDLEN                       ; IDLE mode on sleep, disabled
 
         ; setup state variable
-        movlw   STATE_IDLE
-        movwf   state
-
-        bra     StateMachine
+        retlw   STATE_IDLE
 
 
 ;************************************************************************
@@ -1257,20 +1016,16 @@ TransToLaunch:
         lfsr    FSR2, pressureH
         call    InitWindow
 
-        ; setup state variable
-        movlw   STATE_LAUNCH
-        movwf   state
-
-        bra     StateMachine
+        ; next state -> launch
+        retlw   STATE_LAUNCH
 
 
 ;** Common Functions ****************************************************
 
 ;*******************************************************************
-;   void ButtonPressed(byte selections, bool limitedSelections)
+;   void ButtonPressed(byte selections)
 ;
 ;   input:  byte: number of available options
-;           bool: true - limited number of options, will signal invalid option and reset.
 ;
 ;   output: none.
 ;
@@ -1282,6 +1037,8 @@ TransToLaunch:
 ;
 ;*******************************************************************
 
+; TODO: move this to button.asm
+
 ;************************************************************************
 ;   static ButtonPressed - Button has been pressed, get selection
 ;
@@ -1290,7 +1047,7 @@ TransToLaunch:
 ;   Output: byte option - the option selected.
 ;
 ;   Precondition: Register W contains the number of options available to
-;   the user.  The boolean limitedSelections is initialized.
+;   the user.
 ;
 ;   Postcondition: None.
 ;
@@ -1363,19 +1120,6 @@ check_sel:
         bra     setup_sel
 
 end_of_options:
-        ; if(limitedSelections) {
-        ;     LongBeep()
-        ;     option = 0xFF
-        ; }
-        ;
-        ; WaitButtonRelease()
-        btfss   limitedSelections, 0
-        bra     eoo_endif
-
-        call    LongBeep                            ; beep at 5s mark - invalid
-        setf    option
-
-eoo_endif:
         rcall   WaitButtonRelease
 
         return
@@ -1385,6 +1129,7 @@ button_released:
         ; debounce button release
         call    Debounce
 
+        movf    option, W
         return                                      ; return with duration in WREG
 
 

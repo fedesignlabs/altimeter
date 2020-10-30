@@ -36,7 +36,6 @@
 
         GLOBAL      StateTest
 
-        EXTERN      StateMachine
         EXTERN      WaitButtonRelease
 
 
@@ -73,10 +72,7 @@ sT_button_pressed:
         bcf     OSCCON, IDLEN                       ; IDLE mode on sleep, disabled
 
         ; setup state variable
-        movlw   STATE_IDLE
-        movwf   state
-
-        goto    StateMachine
+        retlw   STATE_IDLE
 
 sT_button_done:
 
@@ -159,7 +155,7 @@ sT_pressure_changed:
 
 sT_pressure_change_endif:
 
-        goto    StateMachine
+        retlw   STATE_TEST
 
 
 ;TESTAPP:

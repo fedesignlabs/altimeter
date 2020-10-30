@@ -1,0 +1,3 @@
+        ; eeprom
+        ;  functions
+        EXTERN      EepromWrite

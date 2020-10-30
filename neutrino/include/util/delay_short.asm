@@ -28,7 +28,7 @@
         GLOBAL      DelayShort
 
 ;*******************************************************************
-DELAYVAR        udata_acs
+DELAY_SHORT_VAR        udata_acs
 tempTime        res 1
 
 
